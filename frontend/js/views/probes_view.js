@@ -12,6 +12,11 @@ export const probesViewTemplate = `
     <div><label>型号</label><input v-model="probeForm.model"/></div>
     <div><label>校准到期</label><input v-model="probeForm.calibration_due" type="date"/></div>
   </div>
+  <p class="hint" v-if="chamberById[probeForm.chamber_id]">
+    挂靠仓间 {{ chamberById[probeForm.chamber_id].chamber_code }}：在批 {{ chamberById[probeForm.chamber_id].active_batch_count }}
+    / 配额 {{ chamberById[probeForm.chamber_id].quota_batches }} · 剩余 {{ chamberById[probeForm.chamber_id].quota_left }}
+    <span class="badge" :class="chamberById[probeForm.chamber_id].quota_full ? 'fail' : 'pass'">{{ chamberById[probeForm.chamber_id].quota_full ? "满额" : "可建批" }}</span>
+  </p>
   <div class="actions">
     <button @click="registerProbe">登记探头</button>
     <button class="secondary" @click="refresh">刷新</button>

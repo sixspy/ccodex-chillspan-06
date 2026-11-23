@@ -41,3 +41,8 @@ python scripts/count_loc.py
 pytest -q
 node --check frontend/js/app.js
 ```
+
+## 仓间配额口径
+
+满额仓间禁止新建正式批次（甲路径：拒写、正式表零增、计数零改），双会话同仓间抢建占仓间锁、后到只记争用痕不增批；仓间/批次/封批/探头/对账五页同源。
+口径与红测盯防见 [`docs/quota-policy.md`](docs/quota-policy.md)，对应测试 `tests/test_quota_full.py`。

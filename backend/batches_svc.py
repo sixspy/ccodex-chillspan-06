@@ -7,11 +7,16 @@ from fastapi import APIRouter, HTTPException
 
 from auth import AuthHeader, require_user, require_writer
 from db import connect, now_iso, write_audit
-from locks import release, require_lock
+from locks import acquire_durable_lock, release_durable_lock
 from models import BatchIn
+from quota import chamber_quota, count_active_batches
 from validators import summarize_points, validate_probe_online, validate_temp_point
 
 router = APIRouter(tags=["batches"])
+
+# 测试缝：获仓间锁后、写业务前调用；生产为 no-op，测试可 monkeypatch 制造持锁重叠。
+def _lock_acquired_gate(holder: str, lock_key: str) -> None:
+    return None
 
 
 def _next_batch_code(conn, chamber_id: int) -> str:
@@ -87,25 +92,43 @@ def get_batch(batch_id: int, authorization: AuthHeader = None):
 def create_batch(body: BatchIn, authorization: AuthHeader = None):
     user = require_writer(authorization)
     lock_key = f"chamber:{body.chamber_id}"
-    with connect() as conn:
-        require_lock(conn, lock_key, user)
-        try:
+    # 先占仓间锁（独立提交、跨会话可见）；后到争用只记痕、直接拒绝、不写业务
+    if not acquire_durable_lock(lock_key, user):
+        raise HTTPException(409, "争用：后到只记争用，不写业务")
+    try:
+        _lock_acquired_gate(user, lock_key)
+        with connect() as conn:
+            # 与锁同一写口径：立即开启写事务，配额复校与插入原子，杜绝检查/插入竞态
+            conn.execute("BEGIN IMMEDIATE")
             ch = conn.execute(
                 "SELECT * FROM cold_chambers WHERE id=?", (body.chamber_id,)
             ).fetchone()
             if not ch:
+                conn.rollback()
                 raise HTTPException(404, "仓间不存在")
-            active = conn.execute(
-                """SELECT COUNT(*) c FROM temp_batches
-                   WHERE chamber_id=? AND status NOT IN ('已封批','作废')""",
-                (body.chamber_id,),
-            ).fetchone()["c"]
-            if active >= int(ch["quota_batches"]):
+            # 甲路径：配额已满 -> 拒写，正式表零增、计数零改
+            active = count_active_batches(conn, body.chamber_id)
+            quota_view = chamber_quota(conn, ch, active)
+            if quota_view["quota_full"]:
+                conn.rollback()
+                write_audit(
+                    conn,
+                    user,
+                    "batch_quota_reject",
+                    ch["chamber_code"],
+                    {
+                        "chamber_id": body.chamber_id,
+                        "active_batch_count": active,
+                        "quota_batches": quota_view["quota_batches"],
+                    },
+                )
+                conn.commit()
                 raise HTTPException(409, "仓间在批配额已满")
             probe = conn.execute(
                 "SELECT * FROM probes WHERE id=?", (body.probe_id,)
             ).fetchone()
             if not probe or probe["chamber_id"] != body.chamber_id:
+                conn.rollback()
                 raise HTTPException(422, "探头与仓间不匹配")
             validate_probe_online(probe)
             points = body.temp_points or []
@@ -120,6 +143,7 @@ def create_batch(body: BatchIn, authorization: AuthHeader = None):
             if conn.execute(
                 "SELECT id FROM temp_batches WHERE batch_code=?", (code,)
             ).fetchone():
+                conn.rollback()
                 raise HTTPException(409, "批次编码已存在")
             status = "已入库" if points else "草稿"
             now = now_iso()
@@ -154,5 +178,5 @@ def create_batch(body: BatchIn, authorization: AuthHeader = None):
                 "status": status,
                 "point_count": len(points),
             }
-        finally:
-            release(conn, lock_key, user)
+    finally:
+        release_durable_lock(lock_key, user)

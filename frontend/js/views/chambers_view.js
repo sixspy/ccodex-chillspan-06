@@ -22,7 +22,7 @@ export const chambersViewTemplate = `
     <div class="table-wrap">
       <table class="data-table">
         <thead>
-          <tr><th>编码</th><th>区域</th><th>温区</th><th>配额</th><th>状态</th><th></th></tr>
+          <tr><th>编码</th><th>区域</th><th>温区</th><th>配额</th><th>在批</th><th>剩余</th><th>满额</th><th>状态</th><th></th></tr>
         </thead>
         <tbody>
           <tr v-for="c in chambers" :key="c.id" :class="{picked: chamberDetail && chamberDetail.chamber.id===c.id}">
@@ -30,6 +30,9 @@ export const chambersViewTemplate = `
             <td>{{ c.region }}</td>
             <td>{{ c.target_min }}~{{ c.target_max }}℃</td>
             <td>{{ c.quota_batches }}</td>
+            <td>{{ c.active_batch_count }}</td>
+            <td>{{ c.quota_left }}</td>
+            <td><span class="badge" :class="c.quota_full ? 'fail' : 'pass'">{{ c.quota_full ? "已满" : "可建" }}</span></td>
             <td><span class="badge" :class="statusClass(c.status)">{{ c.status }}</span></td>
             <td><button class="mini-btn" @click="loadChamberDetail(c.id)">详情</button></td>
           </tr>
@@ -39,7 +42,9 @@ export const chambersViewTemplate = `
   </div>
   <div v-if="chamberDetail" class="detail-box">
     <h3>仓间详情 · {{ chamberDetail.chamber.name }}</h3>
-    <p>在批 {{ chamberDetail.active_batch_count }} · 剩余配额 {{ chamberDetail.quota_left }}</p>
+    <p>在批 {{ chamberDetail.active_batch_count }} / 配额 {{ chamberDetail.quota_batches }} · 剩余配额 {{ chamberDetail.quota_left }}
+      <span class="badge" :class="chamberDetail.quota_full ? 'fail' : 'pass'">{{ chamberDetail.quota_full ? "满额禁新批" : "可建批" }}</span>
+    </p>
     <table class="data-table compact">
       <thead><tr><th>探头</th><th>在线</th><th>校准到期</th></tr></thead>
       <tbody>

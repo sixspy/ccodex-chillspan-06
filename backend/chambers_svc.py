@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from auth import AuthHeader, require_user, require_writer
 from db import connect, now_iso, write_audit
 from models import ChamberIn
+from quota import active_counts_by_chamber, chamber_quota, count_active_batches
 
 router = APIRouter(tags=["chambers"])
 
@@ -23,7 +24,15 @@ def list_chambers(authorization: AuthHeader = None, region: str | None = None):
             rows = conn.execute(
                 "SELECT * FROM cold_chambers ORDER BY id"
             ).fetchall()
-        return {"items": [dict(r) for r in rows]}
+        # 五页同源：在批计数只从 quota 模块这一个口径取
+        counts = active_counts_by_chamber(conn)
+        items = []
+        for r in rows:
+            d = dict(r)
+            active = counts.get(int(r["id"]), 0)
+            d.update(chamber_quota(conn, r, active))
+            items.append(d)
+        return {"items": items}
 
 
 @router.get("/api/chambers/{chamber_id}")
@@ -44,17 +53,13 @@ def get_chamber(chamber_id: int, authorization: AuthHeader = None):
                WHERE chamber_id=? ORDER BY id DESC LIMIT 20""",
             (chamber_id,),
         ).fetchall()
-        active = conn.execute(
-            """SELECT COUNT(*) c FROM temp_batches
-               WHERE chamber_id=? AND status NOT IN ('已封批','作废')""",
-            (chamber_id,),
-        ).fetchone()["c"]
+        active = count_active_batches(conn, chamber_id)
+        quota_view = chamber_quota(conn, ch, active)
         return {
             "chamber": dict(ch),
             "probes": [dict(p) for p in probes],
             "recent_batches": [dict(b) for b in batches],
-            "active_batch_count": active,
-            "quota_left": int(ch["quota_batches"]) - int(active),
+            **quota_view,
         }
 
 

@@ -5,18 +5,16 @@ from fastapi import APIRouter, HTTPException
 
 from auth import AuthHeader, require_user
 from db import connect
+from quota import active_counts_by_chamber, count_active_batches
 
 router = APIRouter(tags=["reconcile"])
 
 
-def _chamber_recon(conn, chamber) -> dict:
+def _chamber_recon(conn, chamber, active: int | None = None) -> dict:
     cid = chamber["id"]
     quota = int(chamber["quota_batches"])
-    active = conn.execute(
-        """SELECT COUNT(*) c FROM temp_batches
-           WHERE chamber_id=? AND status NOT IN ('已封批','作废')""",
-        (cid,),
-    ).fetchone()["c"]
+    if active is None:
+        active = count_active_batches(conn, cid)
     sealed = conn.execute(
         """SELECT COUNT(*) c FROM temp_batches
            WHERE chamber_id=? AND status='已封批'""",
@@ -46,7 +44,10 @@ def reconcile_all(authorization: AuthHeader = None):
     require_user(authorization)
     with connect() as conn:
         chambers = conn.execute("SELECT * FROM cold_chambers ORDER BY id").fetchall()
-        items = [_chamber_recon(conn, c) for c in chambers]
+        counts = active_counts_by_chamber(conn)
+        items = [
+            _chamber_recon(conn, c, counts.get(int(c["id"]), 0)) for c in chambers
+        ]
         bad = [i for i in items if not i["balanced"]]
         return {
             "items": items,

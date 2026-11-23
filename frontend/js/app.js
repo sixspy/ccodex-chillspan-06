@@ -121,6 +121,22 @@ createApp({
     const batchProbes = computed(() =>
       probes.value.filter((p) => p.chamber_id === batchForm.value.chamber_id)
     );
+    // 五页同源：仓间在批/剩余/满额只认后端 /api/chambers 返回的同名字段，前端不另算计数
+    const chamberById = computed(() => {
+      const m = {};
+      for (const c of chambers.value) m[c.id] = c;
+      return m;
+    });
+    const selectedChamber = computed(
+      () => chamberById.value[batchForm.value.chamber_id] || null
+    );
+    const selectedChamberFull = computed(
+      () => selectedChamber.value?.quota_full === true
+    );
+    const batchChamber = computed(() => {
+      const b = batches.value.find((x) => x.id === sealForm.value.batch_id);
+      return b ? chamberById.value[b.chamber_id] || null : null;
+    });
     const openableBatches = computed(() =>
       batches.value.filter((b) => b.status !== "已封批" && b.status !== "草稿")
     );
@@ -494,6 +510,10 @@ createApp({
       openableBatches,
       sealableBatches,
       sealedBatches,
+      chamberById,
+      selectedChamber,
+      selectedChamberFull,
+      batchChamber,
       login,
       logout,
       refresh,

@@ -14,8 +14,13 @@ export const batchesViewTemplate = `
   </div>
   <label>温度点 JSON</label>
   <textarea v-model="batchForm.points_json" rows="4" placeholder="[{&quot;t&quot;:&quot;08:00&quot;,&quot;c&quot;:-19}]"></textarea>
+  <p class="hint" v-if="selectedChamber">
+    {{ selectedChamber.chamber_code }} 在批 {{ selectedChamber.active_batch_count }} / 配额 {{ selectedChamber.quota_batches }}
+    · 剩余 {{ selectedChamber.quota_left }}
+    <span class="badge" :class="selectedChamberFull ? 'fail' : 'pass'">{{ selectedChamberFull ? "满额禁新批" : "可建批" }}</span>
+  </p>
   <div class="actions">
-    <button @click="createBatch">新建批次</button>
+    <button @click="createBatch" :disabled="selectedChamberFull" :title="selectedChamberFull ? '仓间在批配额已满，禁止新建批次' : ''">新建批次</button>
     <button class="secondary" @click="refresh">刷新</button>
   </div>
   <table class="data-table">

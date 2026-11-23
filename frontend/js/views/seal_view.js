@@ -8,6 +8,10 @@ export const sealViewTemplate = `
     </div>
     <div><label>快照附言</label><input v-model="sealForm.manifest"/></div>
   </div>
+  <p class="hint" v-if="batchChamber">
+    所属仓间 {{ batchChamber.chamber_code }}：在批 {{ batchChamber.active_batch_count }} / 配额 {{ batchChamber.quota_batches }}
+    · 剩余 {{ batchChamber.quota_left }}（封批后该批退出在批，剩余名额 +1）
+  </p>
   <div class="actions"><button @click="doSeal">执行封批</button></div>
   <table class="data-table">
     <thead><tr><th>批次</th><th>代</th><th>封批时间</th><th>附言摘要</th></tr></thead>
